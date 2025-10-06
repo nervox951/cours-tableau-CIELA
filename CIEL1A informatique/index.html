@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Board Desktop Optimisé</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card-bg: #fff;
+  --text: #222;
+  --header-bg: #1e293b;
+  --header-text: #fff;
+  --bar-bg: #e2e8f0;
+  --bar-fill: linear-gradient(90deg, #22c55e, #16a34a);
+  --btn-bg: #16a34a;
+  --btn-text: #fff;
+  --btn-inactive: #94a3b8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --card-bg: #1e293b;
+    --text: #f1f5f9;
+    --header-bg: #0f172a;
+    --header-text: #f8fafc;
+    --bar-bg: #334155;
+    --btn-inactive: #475569;
+  }
+}
+body { margin:0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif; background: var(--bg); color: var(--text); }
+header { background: var(--header-bg); color: var(--header-text); padding:1rem; text-align:center; font-size:1.5rem; font-weight:bold; }
+.container { display:flex; flex-direction:column; height: calc(100vh - 60px); }
+.strategies-list, .journal-list, .calendar-view { flex:1; overflow-y:auto; padding:1rem; }
+.strategy-card, .journal-card { background: var(--card-bg); border-radius:1rem; box-shadow: 0 4px 10px rgba(0,0,0,0.15); margin-bottom:1rem; padding:1rem; }
+.strategy-header, .journal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+.strategy-title, .journal-title { font-size:1.1rem; font-weight:bold; }
+.progress-bar { background: var(--bar-bg); border-radius:1rem; height:10px; width:100%; overflow:hidden; margin:0.5rem 0; }
+.progress-fill { height:100%; background: var(--bar-fill); width:0%; transition: width 0.3s ease; }
+.criteria { list-style:none; padding:0; margin:0.5rem 0; }
+.criteria li { margin-bottom:0.5rem; display:flex; align-items:center; }
+.criteria input[type="checkbox"] { transform:scale(1.3); margin-right:0.75rem; }
+.enter-btn { display:block; width:100%; padding:0.75rem; border:none; border-radius:0.75rem; background: var(--btn-inactive); color: var(--btn-text); font-size:1rem; font-weight:bold; margin-top:0.5rem; cursor:pointer; }
+.enter-btn.active { background: var(--btn-bg); animation: pulse 1s infinite; }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,0.6);} 70%{box-shadow:0 0 0 15px rgba(34,197,94,0);} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0);} }
+.journal-form { display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1rem; }
+.journal-form input, .journal-form select { padding:0.5rem; border-radius:0.5rem; border:1px solid var(--bar-bg); }
+.journal-form button { padding:0.75rem; border:none; border-radius:0.75rem; background: var(--btn-bg); color:#fff; font-weight:bold; cursor:pointer; }
+nav { display:flex; justify-content:center; background: var(--card-bg); padding:0.75rem 0; border-top:1px solid var(--bar-bg); position:fixed; bottom:0; width:100%; z-index:1000; }
+nav button { margin:0 0.5rem; padding:0.5rem 1rem; border:none; border-radius:0.75rem; background: var(--btn-bg); color:#fff; font-weight:bold; cursor:pointer; }
+.calendar-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:5px; }
+.calendar-cell { background: var(--card-bg); border-radius:0.5rem; padding:0.5rem; min-height:80px; display:flex; flex-direction:column; justify-content:flex-start; font-size:0.9rem; }
+.calendar-cell .day-number { font-weight:bold; margin-bottom:0.25rem; }
+.calendar-entry { font-size:0.8rem; margin-bottom:0.2rem; padding:0.2rem; border-radius:0.25rem; }
+.calendar-entry.gain { background:#22c55e; color:#fff; }
+.calendar-entry.loss { background:#ef4444; color:#fff; }
+@media (min-width:1024px){
+  .container{flex-direction:row;}
+  .strategies-list{flex:2; order:1; padding:1rem;}
+  .journal-list{flex:2; order:2; padding:1rem;}
+  .calendar-view{flex:4; order:3; padding:1rem;}
+  nav{position:static; border-top:none;}
+}
+</style>
+</head>
+<body>
+<header>📈 Trade Board Optimisé</header>
+<div class="container">
+  <div class="strategies-list" id="strategiesList"></div>
+  <div class="journal-list" id="journalList" style="display:none">
+    <form class="journal-form" id="journalForm">
+      <input type="text" id="asset" placeholder="Actif (ex: EURUSD)" required>
+      <input type="number" id="price" placeholder="Prix d'entrée" required>
+      <select id="type"><option value="achat">Achat</option><option value="vente">Vente</option></select>
+      <input type="number" id="result" placeholder="Résultat (gain/perte)" required>
+      <button type="submit">Ajouter</button>
+    </form>
+    <div id="journalEntries"></div>
+  </div>
+  <div class="calendar-view" id="calendarView" style="display:none"></div>
+</div>
+<nav>
+  <button onclick="showTab('strategies')">Stratégies</button>
+  <button onclick="showTab('journal')">Journal</button>
+  <button onclick="showTab('calendar')">Calendrier</button>
+</nav>
+<script>
+const strategies = [
+  { title:"Breakout H1 EURUSD", criteria:[
+      {text:"Cassure résistance H1", done:false},
+      {text:"Volume > moyenne 20", done:false},
+      {text:"RSI > 55", done:false},
+      {text:"MACD bullish cross", done:false},
+      {text:"Pas de news majeures", done:false}
+  ]},
+  { title:"Rebond support BTCUSDT", criteria:[
+      {text:"Test support daily", done:false},
+      {text:"Bougie reversal", done:false},
+      {text:"RSI oversold", done:false}
+  ]}
+];
+let journal=[];
+
+function renderStrategies(){
+  const list=document.getElementById('strategiesList'); list.innerHTML='';
+  strategies.forEach((strategy,sIndex)=>{
+    let completed=strategy.criteria.filter(c=>c.done).length;
+    let total=strategy.criteria.length;
+    let percent=Math.round((completed/total)*100);
+    const card=document.createElement('div'); card.className='strategy-card';
+    card.innerHTML=`<div class="strategy-header"><div class="strategy-title">${strategy.title}</div><div>${completed}/${total}</div></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <ul class="criteria">${strategy.criteria.map((c,i)=>`<li><input type="checkbox" ${c.done?'checked':''} data-s="${sIndex}" data-c="${i}">${c.text}</li>`).join('')}</ul>
+      <button class="enter-btn ${percent===100?'active':''}">${percent===100?'✔ Entrer en position':'Conditions incomplètes'}</button>`;
+    list.appendChild(card);
+  });
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+    cb.addEventListener('change',e=>{
+      const s=e.target.dataset.s; const c=e.target.dataset.c;
+      strategies[s].criteria[c].done=e.target.checked; renderStrategies();
+    });
+  });
+}
+
+function renderJournal(){
+  const entriesDiv=document.getElementById('journalEntries'); entriesDiv.innerHTML='';
+  journal.forEach(entry=>{
+    const card=document.createElement('div'); card.className='journal-card';
+    card.innerHTML=`<div class="journal-header"><div class="journal-title">${entry.asset} - ${entry.type}</div><div>${entry.result>0?'🟢':'🔴'} ${entry.result}</div></div><div>Prix: ${entry.price}</div><div>Date: ${entry.date}</div>`;
+    entriesDiv.appendChild(card);
+  });
+}
+
+function renderCalendar(){
+  const cal=document.getElementById('calendarView'); cal.innerHTML='';
+  const now=new Date(); let month=now.getMonth(); let year=now.getFullYear();
+  let firstDay=new Date(year,month,1).getDay();
+  let daysInMonth=new Date(year,month+1,0).getDate();
+  const grid=document.createElement('div'); grid.className='calendar-grid';
+  for(let i=0;i<firstDay;i++){ grid.appendChild(document.createElement('div')); }
+  for(let d=1;d<=daysInMonth;d++){
+    const dayDiv=document.createElement('div'); dayDiv.className='calendar-cell';
+    const dayNum=document.createElement('div'); dayNum.className='day-number'; dayNum.textContent=d; dayDiv.appendChild(dayNum);
+    journal.filter(e=>new Date(e.date).getDate()===d).forEach(e=>{
+      const span=document.createElement('div'); span.className='calendar-entry '+(e.result>0?'gain':'loss');
+      span.textContent=`${e.asset}:${e.result}`; dayDiv.appendChild(span);
+    });
+    grid.appendChild(dayDiv);
+  }
+  cal.appendChild(grid);
+}
+
+document.getElementById('journalForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const asset=document.getElementById('asset').value;
+  const price=document.getElementById('price').value;
+  const type=document.getElementById('type').value;
+  const result=parseFloat(document.getElementById('result').value);
+  const date=new Date().toLocaleDateString();
+  journal.push({asset,price,type,result,date}); e.target.reset(); renderJournal(); renderCalendar();
+});
+
+function showTab(tab){
+  document.getElementById('strategiesList').style.display=tab==='strategies'?'block':'none';
+  document.getElementById('journalList').style.display=tab==='journal'?'block':'none';
+  document.getElementById('calendarView').style.display=tab==='calendar'?'block':'none';
+}
+
+window.onload=()=>{ renderStrategies(); renderJournal(); renderCalendar(); };
+</script>
+</body>
+</html>

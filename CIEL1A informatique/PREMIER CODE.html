@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Board Pro</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+<style>
+body, html{margin:0;padding:0;font-family:'Segoe UI',sans-serif;background:#121212;color:#eee;}
+#introScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:#00ff00;color:#000;display:flex;justify-content:center;align-items:center;flex-direction:column;z-index:100;transition:all 1s;}
+#introScreen.hide{opacity:0;transform:translateY(-100%);}
+header{background:#111;padding:1rem;text-align:center;font-size:1.8rem;font-weight:bold;}
+nav{display:flex;justify-content:space-around;background:#1f1f1f;padding:0.5rem 0;position:sticky;top:0;z-index:10;}
+nav button{padding:0.5rem 1rem;border:none;border-radius:5px;cursor:pointer;background:#333;color:#eee;transition:0.3s;}
+nav button.active{background:#00ff00;color:#000;}
+section{padding:1rem;background:#1f1f1f;margin:1rem;border-radius:10px;}
+input, textarea, select, button{padding:0.4rem;margin:0.2rem 0;border-radius:5px;border:none;}
+button.addEntry,button.authButton{background:#00ff00;color:#000;cursor:pointer;}
+button.addEntry:hover,button.authButton:hover{background:#0f0;}
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+.calendar div{min-height:80px;padding:0.3rem;background:#333;cursor:pointer;position:relative;}
+.calendar div:hover{background:#444;}
+.entry{margin-top:1rem;font-size:0.75rem;display:flex;align-items:center;}
+.entry i{margin-right:5px;}
+.entry .gain{color:lime;font-weight:bold;}
+.entry .loss{color:red;font-weight:bold;}
+#imageGallery img{width:60px;margin:2px;border-radius:5px;}
+#newsContainer div{margin-bottom:0.5rem;}
+iframe#economicCalendar{width:100%;height:600px;border:none;margin-top:1rem;}
+.strategy{margin-bottom:1rem;background:#222;padding:0.5rem;border-radius:6px;}
+</style>
+</head>
+<body>
+
+<div id="introScreen">
+  <h1>Trade Board Pro</h1>
+  <p>Bienvenue sur votre application de suivi de stratégies et journal de trading.<br>
+  Planifiez, suivez vos positions et analysez vos performances.<br>
+  "Le succès en trading vient de la discipline et de l'organisation."</p>
+</div>
+
+<header>Trade Board Pro</header>
+
+<div id="authContainer">
+  <h2>Connexion / Inscription</h2>
+  <input type="email" id="authEmail" placeholder="Email">
+  <input type="password" id="authPassword" placeholder="Mot de passe">
+  <button class="authButton" id="signInBtn">Se connecter</button>
+  <button class="authButton" id="signUpBtn">Créer un compte</button>
+  <button class="authButton" id="signOutBtn" style="display:none;">Se déconnecter</button>
+  <div id="emailWarning" style="color:red;display:none;">Email non vérifié !</div>
+</div>
+
+<nav style="display:none;" id="mainNav">
+  <button id="tab-news" class="active">Actualités</button>
+  <button id="tab-strategies">Stratégies</button>
+  <button id="tab-calendar">Calendrier</button>
+  <button id="tab-images">Images</button>
+</nav>
+
+<section id="section-news" style="display:none;">
+  <h2>Actualités financières</h2>
+  <div id="newsContainer"></div>
+  <h3>Calendrier économique</h3>
+  <iframe id="economicCalendar" src="https://fr.investing.com/economic-calendar/"></iframe>
+</section>
+
+<section id="section-strategies" style="display:none;">
+  <h2>Mes stratégies</h2>
+  <div id="strategiesContainer"></div>
+  <button id="addStrategy">Ajouter une stratégie</button>
+</section>
+
+<section id="section-calendar" style="display:none;">
+  <h2>Calendrier & Journal</h2>
+  <div style="display:flex;justify-content:space-between;">
+    <button id="prevMonth">&lt; Mois précédent</button>
+    <span id="currentMonth"></span>
+    <button id="nextMonth">Mois suivant &gt;</button>
+  </div>
+  <div class="calendar" id="calendar"></div>
+  <h3>Ajouter/Modifier Trade</h3>
+  <input type="date" id="entryDate">
+  <select id="entryAsset">
+    <option value="EURUSD">EUR/USD</option>
+    <option value="XAUUSD">Gold</option>
+    <option value="DJ30">DJ30</option>
+    <option value="NAS100">NAS100</option>
+    <option value="AUTRE">Ajouter un actif...</option>
+  </select>
+  <select id="entryType"><option value="achat">Achat</option><option value="vente">Vente</option></select>
+  <input type="number" id="entryPrice" placeholder="Prix">
+  <input type="number" id="entryResult" placeholder="Résultat (gain/perte)">
+  <textarea id="entryDescription" placeholder="Description"></textarea>
+  <input type="number" id="entryCapital" placeholder="Dépôt journalier">
+  <button class="addEntry">Ajouter / Modifier entrée</button>
+  <div id="dailyProfit" style="margin-top:0.5rem;font-weight:bold;"></div>
+</section>
+
+<section id="section-images" style="display:none;">
+  <h2>Mes images</h2>
+  <input type="file" id="imageInput">
+  <button id="addImageButton">Ajouter l'image</button>
+  <div id="imageGallery"></div>
+</section>
+
+<script>
+// --- Firebase ---
+const firebaseConfig = {
+  apiKey: "AIzaSyACFzFXKK_1EH6_PVgaQQXD3fc8mBvQRvg",
+  authDomain: "perso-journaling.firebaseapp.com",
+  projectId: "perso-journaling",
+  storageBucket: "perso-journaling.firebasestorage.app",
+  messagingSenderId: "660360215177",
+  appId: "1:660360215177:web:WEBAPPID_A_REMPLACER"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// --- Intro dynamique ---
+const introScreen = document.getElementById("introScreen");
+introScreen.addEventListener("click",()=>introScreen.classList.add("hide"));
+setTimeout(()=>introScreen.classList.add("hide"),3000);
+setTimeout(()=>introScreen.style.display="none",4000);
+
+// --- Onglets ---
+const tabs = {news:'section-news', strategies:'section-strategies', calendar:'section-calendar', images:'section-images'};
+Object.keys(tabs).forEach(tab=>{
+  document.getElementById(`tab-${tab}`).addEventListener("click",()=>{
+    Object.values(tabs).forEach(s=>document.getElementById(s).style.display='none');
+    document.getElementById(tabs[tab]).style.display='block';
+    Object.keys(tabs).forEach(t=>document.getElementById(`tab-${t}`).classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+  });
+});
+
+// --- Authentification ---
+const authContainer = document.getElementById("authContainer");
+const mainNav = document.getElementById("mainNav");
+const signOutBtn = document.getElementById("signOutBtn");
+const emailWarning = document.getElementById("emailWarning");
+
+auth.onAuthStateChanged(user=>{
+  if(user){
+    if(!user.emailVerified){emailWarning.style.display="block"; auth.signOut(); return;}
+    authContainer.style.display="none"; mainNav.style.display="flex"; document.getElementById('section-news').style.display='block'; signOutBtn.style.display="block";
+    loadUserData(user.uid);
+  } else {authContainer.style.display="block"; mainNav.style.display="none"; signOutBtn.style.display="none";}
+});
+
+document.getElementById("signInBtn").addEventListener("click",()=>{
+  const email=document.getElementById("authEmail").value;
+  const password=document.getElementById("authPassword").value;
+  auth.signInWithEmailAndPassword(email,password).catch(err=>alert(err.message));
+});
+document.getElementById("signUpBtn").addEventListener("click",async()=>{
+  const email=prompt("Email:"); const password=prompt("Mot de passe:");
+  try{ const user=await auth.createUserWithEmailAndPassword(email,password); await user.user.sendEmailVerification(); alert("Compte créé ! Vérifiez votre mail.");}catch(err){alert(err.message);}
+});
+signOutBtn.addEventListener("click",()=>auth.signOut());
+
+// --- Actualités financières ---
+const newsContainer=document.getElementById("newsContainer");
+async function loadNews(){
+  const newsList=[
+    {title:"Gold atteint un nouveau sommet",link:"https://www.investing.com/commodities/gold"},
+    {title:"Dollar stabilisé après les annonces",link:"https://www.investing.com/currencies/usd-index"},
+    {title:"BTC continue sa progression",link:"https://www.coindesk.com"}
+  ];
+  newsContainer.innerHTML="";
+  newsList.forEach(n=>{
+    const div=document.createElement("div");
+    div.innerHTML=`<a href="${n.link}" target="_blank" style="color:#0f0;">${n.title}</a>`;
+    newsContainer.appendChild(div);
+  });
+}
+loadNews();
+
+// --- Stratégies dynamiques ---
+const strategiesContainer = document.getElementById("strategiesContainer");
+document.getElementById("addStrategy").addEventListener("click",()=>{
+  const div=document.createElement("div"); div.className="strategy"; div.innerHTML='<input placeholder="Nom stratégie"><div class="conditionsContainer"></div><button class="addCondition">+ Condition</button>';
+  strategiesContainer.appendChild(div);
+  div.querySelector(".addCondition").addEventListener("click",()=>{
+    const c=document.createElement("input"); c.placeholder="Condition"; div.querySelector(".conditionsContainer").appendChild(c);
+  });
+});
+
+// --- Calendrier interne ---
+const calendarEl = document.getElementById("calendar");
+const prevMonthBtn = document.getElementById("prevMonth");
+const nextMonthBtn = document.getElementById("nextMonth");
+const currentMonthLabel = document.getElementById("currentMonth");
+const entryDateInput = document.getElementById("entryDate");
+const entryAssetInput = document.getElementById("entryAsset");
+const entryTypeInput = document.getElementById("entryType");
+const entryPriceInput = document.getElementById("entryPrice");
+const entryResultInput = document.getElementById("entryResult");
+const entryDescriptionInput = document.getElementById("entryDescription");
+const entryCapitalInput = document.getElementById("entryCapital");
+const addEntryButton = document.querySelector(".addEntry");
+let entries = {};
+let images = {};
+let today = new Date(); let currentMonth = today.getMonth(); let currentYear = today.getFullYear();
+
+function renderCalendar(month=currentMonth,year=currentYear){
+  calendarEl.innerHTML="";
+  const firstDay = new Date(year,month,1).getDay();
+  const lastDate = new Date(year,month+1,0).getDate();
+  const daysInWeek=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+  daysInWeek.forEach(d=>{const div=document.createElement("div"); div.style.fontWeight="bold"; div.style.background="#222"; div.textContent=d; calendarEl.appendChild(div);});
+  for(let i=0;i<firstDay;i++) calendarEl.appendChild(document.createElement("div"));
+  for(let d=1;d<=lastDate;d++){
+    const div=document.createElement("div");
+    const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    div.textContent=d;
+    if(entries[dateStr]){
+      let total=0;
+      entries[dateStr].forEach(en=>{
+        const eDiv=document.createElement("div"); eDiv.className="entry";
+        const icon=en.type==="achat"?"fa-arrow-up":"fa-arrow-down";
+        eDiv.innerHTML=`<i class="fas ${icon}"></i>${en.asset} ${en.result>0?'<span class="gain">+'+en.result+'</span>':'<span class="loss">'+en.result+'</span>'}`;
+        total+=en.result; div.appendChild(eDiv);
+      });
+      div.style.background=total>=0?"#006400":"#8b0000";
+    }
+    div.addEventListener("dblclick",()=>{
+      entryDateInput.value=dateStr;
+      if(entries[dateStr]){
+        const firstEntry=entries[dateStr][0];
+        entryAssetInput.value=firstEntry.asset;
+        entryTypeInput.value=firstEntry.type;
+        entryPriceInput.value=firstEntry.price;
+        entryResultInput.value=firstEntry.result;
+        entryDescriptionInput.value=firstEntry.desc;
+        entryCapitalInput.value=firstEntry.capital||'';
+      }
+    });
+    calendarEl.appendChild(div);
+  }
+  currentMonthLabel.textContent=new Date(year,month).toLocaleString('fr-FR',{month:'long',year:'numeric'});
+}
+prevMonthBtn.addEventListener("click",()=>{currentMonth--; if(currentMonth<0){currentMonth=11;currentYear--;} renderCalendar();});
+nextMonthBtn.addEventListener("click",()=>{currentMonth++; if(currentMonth>11){currentMonth=0;currentYear++;} renderCalendar();});
+addEntryButton.addEventListener("click",async()=>{
+  const user=auth.currentUser; if(!user){alert("Connecte-toi !"); return;}
+  const date=entryDateInput.value; if(!date){alert("Choisis une date !"); return;}
+  const asset=entryAssetInput.value; const type=entryTypeInput.value; const price=parseFloat(entryPriceInput.value)||0;
+  const result=parseFloat(entryResultInput.value)||0; const desc=entryDescriptionInput.value; const capital=parseFloat(entryCapitalInput.value)||0;
+  if(!entries[date]) entries[date]=[];
+  entries[date].push({asset,type,price,result,desc,capital});
+  await db.collection("users").doc(user.uid).collection("journal").add({date,asset,type,price,result,desc,capital,userId:user.uid});
+  renderCalendar();
+});
+async function loadUserData(uid){
+  entries={}; images={};
+  const snapshot = await db.collection("users").doc(uid).collection("journal").get();
+  snapshot.forEach(doc=>{const data=doc.data(); if(!entries[data.date]) entries[data.date]=[]; entries[data.date].push({asset:data.asset,type:data.type,price:data.price,result:data.result,desc:data.desc,capital:data.capital});});
+  renderCalendar();
+}
+renderCalendar();
+
+// --- Images ---
+const imageInput = document.getElementById("imageInput");
+const addImageButton = document.getElementById("addImageButton");
+const imageGallery = document.getElementById("imageGallery");
+addImageButton.addEventListener("click",async()=>{
+  const user = auth.currentUser; if(!user){alert("Connecte-toi !"); return;}
+  const file = imageInput.files[0]; if(!file){alert("Choisis une image !"); return;}
+  const reader = new FileReader();
+  reader.onload = async e=>{
+    const date = entryDateInput.value || new Date().toISOString().split('T')[0];
+    if(!images[date]) images[date]=[];
+    images[date].push(e.target.result);
+    const docRef = db.collection("users").doc(user.uid).collection("images").doc(date);
+    await docRef.set({imgs:images[date]});
+    renderImages(date);
+  };
+  reader.readAsDataURL(file);
+});
+function renderImages(date){
+  imageGallery.innerHTML="";
+  if(images[date]) images[date].forEach(src=>{
+    const img = document.createElement("img"); img.src=src;
+    imageGallery.appendChild(img);
+  });
+}
+</script>
+</body>
+</html>
